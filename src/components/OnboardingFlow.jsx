@@ -50,7 +50,11 @@ const OnboardingFlow = ({ onComplete }) => {
     if (step < 3) {
       setStep(step + 1);
     } else {
-      onComplete({ budget });
+      onComplete({ 
+        budget, 
+        smsPermission: smsTracking ? 'Permission Granted' : 'Not Requested',
+        categorizationPreference: catPreference
+      });
     }
   };
 
@@ -411,8 +415,12 @@ const OnboardingFlow = ({ onComplete }) => {
 
             <div className="pb-8">
               <button
-                onClick={() => onComplete({ budget })}
-                className="btn-primary rounded-[14px]"
+                onClick={() => onComplete({ 
+                  budget, 
+                  smsPermission: smsTracking ? 'Permission Granted' : 'Not Requested',
+                  categorizationPreference: catPreference
+                })}
+                className="btn-primary rounded-[14px] shadow-brand-sm"
               >
                 Enter Dashboard
               </button>

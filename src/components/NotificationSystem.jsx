@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Utensils, Car, Smartphone, 
   MoreHorizontal, Users, ShieldAlert, Zap,
-  CheckCircle2, AlertTriangle, Info, Bell
+  CheckCircle2, AlertTriangle, Bell
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 

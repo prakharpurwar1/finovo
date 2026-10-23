@@ -1,17 +1,40 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { 
   TrendingUp, TrendingDown,
-  ArrowRight,
-  ShoppingBag, Utensils, Car, Smartphone,
+  Activity, Plus,
   CheckCircle2, AlertCircle,
-  ChevronRight, Filter
+  ChevronRight, PieChart
 } from 'lucide-react';
 import { 
-  AreaChart, Area, XAxis, YAxis, 
-  Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, PieChart, Pie
+  AreaChart, Area, Tooltip, ResponsiveContainer 
 } from 'recharts';
+import { formatCurrency } from '../utils/currency.js';
+import { getHourlySpendDistribution } from '../utils/date.js';
+import { 
+  PERIOD_FILTERS, 
+  getPeriodBoundaries, 
+  filterTransactionsByPeriod, 
+  calculateCashFlowMetrics, 
+  calculateBudgetHealth,
+  getCategorySpendingBreakdown,
+  getDailySpendingSeries 
+} from '../utils/financialAnalytics.js';
+
+const categoryEmojis = {
+  Food: '🍔',
+  Travel: '🚕',
+  Shopping: '🛍️',
+  Recharge: '📱',
+  Medicine: '💊',
+  Education: '📚',
+  Entertainment: '🎬',
+  Salary: '💰',
+  Investments: '📈',
+  Freelance: '💻',
+  Refunds: '🔄',
+  Others: '💳'
+};
 
 const StatCard = ({ label, value, subValue, trend, trendType }) => (
   <motion.div 
@@ -34,9 +57,10 @@ const StatCard = ({ label, value, subValue, trend, trendType }) => (
   </motion.div>
 );
 
-const InsightCard = ({ icon: Icon, title, description, color, action }) => (
+const InsightCard = ({ icon: Icon, title, description, color, action, onAction }) => (
   <motion.div 
     whileHover={{ x: 2 }}
+    onClick={onAction}
     className="flex gap-4 p-4 bg-bg-card border border-brand-border rounded-xl group cursor-pointer hover:bg-bg-card/85 transition-all shadow-brand-sm"
   >
     <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center shrink-0 border border-brand-border`}>
@@ -54,115 +78,277 @@ const InsightCard = ({ icon: Icon, title, description, color, action }) => (
   </motion.div>
 );
 
-const Insights = () => {
-  const [timeframe, setTimeframe] = useState('Daily');
+const Insights = ({ transactions = [], userProfile, onAdd, onGoToProfile }) => {
+  const [selectedPeriod, setSelectedPeriod] = useState(PERIOD_FILTERS.THIS_MONTH);
 
-  const hourlyData = [
-    { time: '9a', amount: 120 }, { time: '11a', amount: 450 }, { time: '1p', amount: 850 },
-    { time: '3p', amount: 320 }, { time: '5p', amount: 150 }, { time: '7p', amount: 1200 },
-    { time: '9p', amount: 450 }, { time: '11p', amount: 100 }
-  ];
+  // Period boundaries
+  const boundaries = useMemo(() => {
+    return getPeriodBoundaries(selectedPeriod);
+  }, [selectedPeriod]);
 
-  const weeklyData = [
-    { name: 'Mon', amount: 1200 }, { name: 'Tue', amount: 2100 },
-    { name: 'Wed', amount: 800 }, { name: 'Thu', amount: 1600 },
-    { name: 'Fri', amount: 4200 }, { name: 'Sat', amount: 5800 },
-    { name: 'Sun', amount: 3100 }
-  ];
+  // Current period transactions
+  const periodTransactions = useMemo(() => {
+    return filterTransactionsByPeriod(transactions, {
+      startDate: boundaries.startDate,
+      endDate: boundaries.endDate,
+      excludeDemo: false
+    });
+  }, [transactions, boundaries]);
 
-  const categoryData = [
-    { name: 'Food', value: 35, color: '#f97316' },
-    { name: 'Travel', value: 25, color: '#3b82f6' },
-    { name: 'Shopping', value: 20, color: '#10b981' },
-    { name: 'Bills', value: 20, color: '#8b5cf6' }
-  ];
+  // Financial cash flow metrics
+  const metrics = useMemo(() => {
+    return calculateCashFlowMetrics(periodTransactions);
+  }, [periodTransactions]);
 
-  const renderDaily = () => (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
-      <div className="bg-bg-card border border-brand-border rounded-[20px] p-6 shadow-brand-sm">
-        <span className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-1 block">Spent Today</span>
-        <h3 className="text-3xl font-bold text-txt-primary mb-1">₹3,490</h3>
-        <p className="text-[11px] text-brand-success font-semibold flex items-center gap-1 mb-6">
-          <TrendingDown size={12} /> 12% lower than daily average
-        </p>
+  // Category intensity breakdown
+  const categoryBreakdown = useMemo(() => {
+    return getCategorySpendingBreakdown(periodTransactions);
+  }, [periodTransactions]);
 
-        <div className="h-44 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={hourlyData}>
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'var(--bg-card)', 
-                  borderColor: 'var(--color-border)',
-                  borderRadius: '10px',
-                  fontSize: '11px',
-                  color: 'var(--text-primary)'
-                }}
-                formatter={(value) => [`₹${value}`, 'Spend']}
-              />
-              <Area type="monotone" dataKey="amount" stroke="var(--color-primary)" strokeWidth={2} fill="var(--color-primary)" fillOpacity={0.08} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+  const topCategory = useMemo(() => {
+    return categoryBreakdown.length > 0 
+      ? categoryBreakdown[0] 
+      : { category: 'None', amount: 0, percentage: 0 };
+  }, [categoryBreakdown]);
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Transactions" value="6" subValue="Today" />
-        <StatCard label="Top Category" value="Food" subValue="₹1,850" />
-      </div>
+  // Monthly Budget Health
+  const currentMonthBoundaries = useMemo(() => getPeriodBoundaries(PERIOD_FILTERS.THIS_MONTH), []);
+  const currentMonthTransactions = useMemo(() => {
+    return filterTransactionsByPeriod(transactions, {
+      startDate: currentMonthBoundaries.startDate,
+      endDate: currentMonthBoundaries.endDate
+    });
+  }, [transactions, currentMonthBoundaries]);
 
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-txt-secondary px-1">Smart AI Recommendations</h3>
-        <InsightCard 
-          icon={AlertCircle}
-          title="Weekend Budget Alert"
-          description="Your weekend spending typically spikes by 40%. Consider setting a cap."
-          color="bg-brand-warning/10 text-brand-warning"
-          action="Set Limit"
-        />
-        <InsightCard 
-          icon={CheckCircle2}
-          title="On Track for Savings"
-          description="You are 8% ahead of your savings goal for this month."
-          color="bg-brand-success/10 text-brand-success"
-          action="View Goal"
-        />
-      </div>
-    </motion.div>
-  );
+  const monthlyExpense = useMemo(() => {
+    return calculateCashFlowMetrics(currentMonthTransactions).totalExpense;
+  }, [currentMonthTransactions]);
+
+  const budgetLimit = userProfile?.budgetLimit || 45000;
+  const budgetHealth = useMemo(() => {
+    return calculateBudgetHealth(monthlyExpense, budgetLimit);
+  }, [monthlyExpense, budgetLimit]);
+
+  // Chart data matching active period
+  const chartData = useMemo(() => {
+    if (selectedPeriod === PERIOD_FILTERS.TODAY) {
+      const hourly = getHourlySpendDistribution(transactions, boundaries.startDate);
+      return hourly.map(h => ({ label: h.time, amount: h.amount }));
+    }
+    if (selectedPeriod === PERIOD_FILTERS.THIS_WEEK) {
+      const series = getDailySpendingSeries(periodTransactions, boundaries.startDate, boundaries.endDate);
+      return series.map(s => ({ label: s.dayName, amount: s.amount }));
+    }
+    const start = boundaries.startDate || currentMonthBoundaries.startDate;
+    const end = boundaries.endDate || currentMonthBoundaries.endDate;
+    const series = getDailySpendingSeries(periodTransactions, start, end);
+    return series.map(s => ({ label: s.label, amount: s.amount }));
+  }, [selectedPeriod, boundaries, periodTransactions, transactions, currentMonthBoundaries]);
+
+  const hasData = transactions.length > 0;
+  const hasSpendInPeriod = metrics.totalExpense > 0;
 
   return (
     <div className="p-6 pt-12 bg-bg-app min-h-screen">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-txt-primary">Analytics</h2>
           <p className="text-txt-secondary text-[10px] font-bold uppercase tracking-wider mt-0.5">Real-time Financial Intelligence</p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex bg-bg-card border border-brand-border p-1 rounded-xl mb-6">
-        {['Daily', 'Weekly', 'Monthly'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTimeframe(t)}
-            className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all relative cursor-pointer
-              ${timeframe === t ? 'text-txt-primary' : 'text-txt-secondary hover:text-txt-primary'}`}
-          >
-            {timeframe === t && (
-              <motion.div layoutId="activeInsightTab" className="absolute inset-0 bg-bg-app border border-brand-border rounded-lg shadow-brand-sm" />
-            )}
-            <span className="relative z-10">{t}</span>
-          </button>
-        ))}
-      </div>
+      {hasData ? (
+        <>
+          {/* Period Filter Tabs */}
+          <div className="flex bg-bg-card border border-brand-border p-1 rounded-2xl shadow-brand-sm mb-6">
+            {[
+              { id: PERIOD_FILTERS.THIS_MONTH, label: 'This Month' },
+              { id: PERIOD_FILTERS.THIS_WEEK, label: 'This Week' },
+              { id: PERIOD_FILTERS.TODAY, label: 'Today' },
+              { id: PERIOD_FILTERS.ALL, label: 'All Time' }
+            ].map((t) => {
+              const isSelected = selectedPeriod === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedPeriod(t.id)}
+                  className={`flex-1 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all relative cursor-pointer
+                    ${isSelected ? 'text-white' : 'text-txt-secondary hover:text-txt-primary'}`}
+                >
+                  {isSelected && (
+                    <motion.div layoutId="activeInsightPeriodTab" className="absolute inset-0 bg-brand-primary rounded-xl shadow-brand-sm" />
+                  )}
+                  <span className="relative z-10">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-      <AnimatePresence mode="wait">
-        {renderDaily()}
-      </AnimatePresence>
+          <div className="space-y-6">
+            {/* Main Spend Chart Card */}
+            <div className="bg-bg-card border border-brand-border rounded-[20px] p-6 shadow-brand-sm">
+              <span className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-1 block">
+                {boundaries.label} Expenditure
+              </span>
+              <h3 className="text-3xl font-bold text-txt-primary mb-1">
+                {formatCurrency(metrics.totalExpense)}
+              </h3>
+              <p className="text-[11px] text-brand-success font-semibold flex items-center gap-1 mb-6">
+                <TrendingDown size={12} /> Active Cash Flow Intelligence
+              </p>
+
+              {hasSpendInPeriod ? (
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'var(--bg-card)', 
+                          borderColor: 'var(--color-border)',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          color: 'var(--text-primary)'
+                        }}
+                        formatter={(value) => [formatCurrency(value), 'Spend']}
+                      />
+                      <Area type="monotone" dataKey="amount" stroke="var(--color-primary)" strokeWidth={2} fill="var(--color-primary)" fillOpacity={0.08} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="py-8 flex flex-col items-center justify-center text-center border-t border-brand-border/60">
+                  <p className="text-xs text-txt-secondary font-medium">No expenses recorded for {boundaries.label.toLowerCase()}.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Stat Cards Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard 
+                label="Transactions" 
+                value={metrics.transactionCount.toString()} 
+                subValue={`${metrics.expenseCount} expenses • ${metrics.incomeCount} income`} 
+              />
+              <StatCard 
+                label="Top Category" 
+                value={topCategory.category} 
+                subValue={topCategory.amount > 0 ? `${formatCurrency(topCategory.amount)} (${topCategory.percentage}%)` : 'No expenses'} 
+              />
+              <StatCard 
+                label="Average Expense" 
+                value={formatCurrency(metrics.averageExpense)} 
+                subValue="Per expense record" 
+              />
+              <StatCard 
+                label="Savings Rate" 
+                value={`${metrics.savingsRate}%`} 
+                subValue={`Net: ${formatCurrency(metrics.netCashFlow)}`} 
+              />
+            </div>
+
+            {/* Category Expense Breakdown */}
+            {categoryBreakdown.length > 0 && (
+              <div className="bg-bg-card border border-brand-border rounded-[20px] p-5 shadow-brand-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <PieChart size={16} className="text-brand-primary" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-txt-primary">Category Breakdown</h3>
+                  </div>
+                  <span className="text-[10px] text-txt-secondary font-bold uppercase">{boundaries.label}</span>
+                </div>
+
+                <div className="space-y-3.5">
+                  {categoryBreakdown.map((cat) => {
+                    const emoji = categoryEmojis[cat.category] || '💳';
+                    return (
+                      <div key={cat.category} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-txt-primary flex items-center gap-2">
+                            <span>{emoji}</span> {cat.category}
+                          </span>
+                          <span className="font-bold text-txt-primary">
+                            {formatCurrency(cat.amount)} <span className="text-[10px] text-txt-secondary font-normal">({cat.percentage}%)</span>
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-bg-app rounded-full overflow-hidden border border-brand-border/40">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${cat.percentage}%` }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className="h-full bg-brand-primary rounded-full"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Smart Dynamic Recommendations */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-txt-secondary px-1">Financial Intelligence</h3>
+              
+              {budgetHealth.isExceeded ? (
+                <InsightCard 
+                  icon={AlertCircle}
+                  title="Monthly Budget Exceeded"
+                  description={`You have exceeded your ${formatCurrency(budgetLimit)} monthly limit by ${formatCurrency(budgetHealth.exceededAmount)} (${budgetHealth.percentage}% used).`}
+                  color="bg-brand-error/10 text-brand-error"
+                  action="Adjust Budget"
+                  onAction={onGoToProfile}
+                />
+              ) : budgetHealth.status === 'warning' || budgetHealth.status === 'danger' ? (
+                <InsightCard 
+                  icon={AlertCircle}
+                  title="Approaching Monthly Limit"
+                  description={`You have utilized ${budgetHealth.percentage}% of your ${formatCurrency(budgetLimit)} monthly budget target (${formatCurrency(budgetHealth.remaining)} remaining).`}
+                  color="bg-brand-warning/10 text-brand-warning"
+                  action="View Budget"
+                  onAction={onGoToProfile}
+                />
+              ) : (
+                <InsightCard 
+                  icon={CheckCircle2}
+                  title="Spending On Track"
+                  description={`Your monthly expenses (${formatCurrency(monthlyExpense)}) are well within your ${formatCurrency(budgetLimit)} limit (${budgetHealth.percentage}% used).`}
+                  color="bg-brand-success/10 text-brand-success"
+                  action="View Budget"
+                  onAction={onGoToProfile}
+                />
+              )}
+
+              <InsightCard 
+                icon={Activity}
+                title="Cash Flow Summary"
+                description={`Total recorded income is ${formatCurrency(metrics.totalIncome)} with net savings of ${formatCurrency(Math.max(0, metrics.netCashFlow))} in ${boundaries.label.toLowerCase()}.`}
+                color="bg-brand-primary/10 text-brand-primary"
+                action="Add Transaction"
+                onAction={onAdd}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="bg-bg-card border border-brand-border rounded-[20px] p-8 text-center shadow-brand-sm mt-4">
+          <div className="w-14 h-14 bg-brand-primary/10 rounded-2xl border border-brand-border flex items-center justify-center text-brand-primary mx-auto mb-4 shadow-brand-sm">
+            <Activity size={26} />
+          </div>
+          <h3 className="text-base font-bold text-txt-primary">Start tracking expenses to unlock insights</h3>
+          <p className="text-xs text-txt-secondary mt-1.5 max-w-[260px] mx-auto leading-relaxed mb-6">
+            As you record transactions in Supabase, Finovo automatically generates financial health scores, category intensity graphs, and cash flow intelligence.
+          </p>
+          {onAdd && (
+            <button
+              onClick={onAdd}
+              className="btn-primary py-3 px-6 text-xs inline-flex w-auto mx-auto items-center gap-1.5 shadow-brand-sm"
+            >
+              <Plus size={14} /> Add First Expense
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="h-28" />
     </div>
   );

@@ -1,74 +1,88 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, ChevronLeft, ShieldCheck, Wallet } from 'lucide-react';
+import { 
+  Mail, Lock, Eye, EyeOff, ArrowRight, ChevronLeft, 
+  ShieldCheck, Wallet, AlertCircle, AlertTriangle, Loader2 
+} from 'lucide-react';
+import { validateAuthForm } from '../utils/validation.js';
+import { 
+  isSupabaseConfigured, 
+  signInWithEmail, 
+  signUpWithEmail, 
+  resetPassword, 
+  supabase 
+} from '../lib/supabaseClient.js';
 
-const InputField = ({ label, type, icon: Icon, value, onChange, placeholder }) => {
-  const [isFocused, setIsFocused] = useState(false);
+const InputField = ({ label, type = 'text', icon: Icon, value, onChange, placeholder, error, disabled = false }) => {
   const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
 
   return (
-    <div className="w-full mb-5 relative group">
-      {/* Icon */}
-      <div className={`absolute left-4 top-1/2 -translate-y-1/2 flex items-center pointer-events-none transition-colors duration-200 z-10 ${isFocused ? 'text-brand-primary' : 'text-txt-secondary/60'}`}>
-        <Icon size={18} />
+    <div className="flex flex-col gap-1.5 w-full">
+      <div className="flex justify-between items-center px-1">
+        <label className="text-[10px] uppercase font-bold tracking-wider text-txt-secondary">
+          {label}
+        </label>
+        {error && (
+          <span className="text-[10px] font-bold text-brand-error flex items-center gap-1">
+            <AlertCircle size={10} /> {error}
+          </span>
+        )}
       </div>
-
-      {/* Input Field */}
-      <input
-        type={type === 'password' ? (showPassword ? 'text' : 'password') : type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        placeholder={isFocused ? placeholder : ''}
-        className={`w-full bg-bg-card border border-brand-border rounded-[14px] pt-6 pb-2 pl-12 pr-12 text-sm text-txt-primary outline-none transition-all duration-200 
-          ${isFocused ? 'border-brand-primary/80 ring-1 ring-brand-primary/20' : 'hover:border-brand-border/85'}`}
-      />
-
-      {/* Floating Label */}
-      <label 
-        className={`absolute left-12 pointer-events-none transition-all duration-200 font-bold uppercase tracking-widest
-          ${(isFocused || value) 
-            ? 'top-2 text-[9px] text-brand-primary' 
-            : 'top-1/2 -translate-y-1/2 text-xs text-txt-secondary/50'}`}
-      >
-        {label}
-      </label>
-
-      {/* Password Toggle Visibility */}
-      {type === 'password' && (
-        <button
-          type="button"
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute inset-y-0 right-0 pr-4 flex items-center text-txt-secondary/50 hover:text-txt-primary transition-colors z-10 cursor-pointer"
-        >
-          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
-      )}
+      <div className="relative flex items-center">
+        <div className="absolute left-4 text-txt-secondary flex items-center justify-center pointer-events-none">
+          <Icon size={18} />
+        </div>
+        <input
+          type={isPassword ? (showPassword ? 'text' : 'password') : type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={`w-full bg-bg-card border rounded-[14px] py-3.5 pl-11 pr-11 text-sm font-medium text-txt-primary placeholder:text-txt-secondary/40 focus:outline-none transition-all ${
+            error 
+              ? 'border-brand-error/70 ring-1 ring-brand-error/40' 
+              : 'border-brand-border focus:border-brand-primary focus:ring-1 focus:ring-brand-primary'
+          } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-4 text-txt-secondary hover:text-txt-primary transition-colors cursor-pointer"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
+      </div>
     </div>
   );
 };
 
 const AuthFlow = ({ onComplete }) => {
-  const [view, setView] = useState('login'); // login, signup, forgot
+  const [view, setView] = useState('login'); // 'login', 'signup', 'forgot'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [errors, setErrors] = useState({});
+  const [generalError, setGeneralError] = useState('');
+  const [successNotice, setSuccessNotice] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
 
-  // Framer Motion Variants for Staggered Fade-in Page Load
+  const backendConfigured = isSupabaseConfigured();
+
   const containerVariants = {
-    hidden: { opacity: 0 },
+    hidden: { opacity: 0, scale: 0.98 },
     visible: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.05,
-        delayChildren: 0.05,
-      }
+      scale: 1,
+      transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1], staggerChildren: 0.08 }
     },
     exit: {
       opacity: 0,
-      y: -10,
-      transition: { duration: 0.2 }
+      scale: 0.98,
+      transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
     }
   };
 
@@ -81,12 +95,125 @@ const AuthFlow = ({ onComplete }) => {
     }
   };
 
-  const handleLogin = (e) => {
+  const handleClearMessages = () => {
+    setErrors({});
+    setGeneralError('');
+    setSuccessNotice('');
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onComplete({
-      name: name.trim() || (email ? email.split('@')[0] : 'Alex Fischer'),
-      email: email.trim() || 'alex@finovo.io'
+    handleClearMessages();
+
+    const isSignup = view === 'signup';
+    const validation = validateAuthForm({ email, password, name }, isSignup);
+
+    if (!validation.isValid) {
+      setErrors(validation.errors);
+      return;
+    }
+
+    if (!backendConfigured) {
+      setGeneralError('Supabase is not configured. Real authentication requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      if (isSignup) {
+        const { data, error } = await signUpWithEmail(email, password, name);
+        if (error) {
+          setGeneralError(error.message);
+          return;
+        }
+
+        if (data?.user) {
+          if (data.session) {
+            onComplete({
+              id: data.user.id,
+              name: data.user.user_metadata?.full_name || name.trim() || email.split('@')[0],
+              email: data.user.email,
+              createdAt: data.user.created_at || new Date().toISOString(),
+              isPremium: false
+            });
+          } else {
+            setSuccessNotice('Account registered! A confirmation link has been sent to your email. Please verify your address to sign in.');
+          }
+        }
+      } else {
+        const { data, error } = await signInWithEmail(email, password);
+        if (error) {
+          setGeneralError(error.message);
+          return;
+        }
+
+        if (data?.user) {
+          onComplete({
+            id: data.user.id,
+            name: data.user.user_metadata?.full_name || (data.user.email ? data.user.email.split('@')[0] : 'Finovo Member'),
+            email: data.user.email,
+            createdAt: data.user.created_at || new Date().toISOString(),
+            isPremium: false
+          });
+        }
+      }
+    } catch (err) {
+      setGeneralError(err.message || 'An unexpected authentication error occurred.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendRecovery = async (e) => {
+    e.preventDefault();
+    handleClearMessages();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setErrors({ email: 'Valid registered email is required' });
+      return;
+    }
+
+    if (!backendConfigured) {
+      setGeneralError('Supabase is not configured. Please supply project credentials in .env to enable password recovery.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await resetPassword(email);
+      if (error) {
+        setGeneralError(error.message);
+        return;
+      }
+      setRecoverySent(true);
+      setTimeout(() => {
+        setView('login');
+        setRecoverySent(false);
+      }, 3500);
+    } catch (err) {
+      setGeneralError(err.message || 'Failed to dispatch recovery instructions.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    handleClearMessages();
+    if (!backendConfigured || !supabase) {
+      setGeneralError('Google authentication requires an active Supabase project configuration in .env.');
+      return;
+    }
+    setIsLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin : ''
+      }
     });
+    if (error) {
+      setGeneralError(error.message);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -102,10 +229,10 @@ const AuthFlow = ({ onComplete }) => {
             className="flex flex-col h-full relative z-10"
           >
             {/* Logo and Tagline Area */}
-            <div className="mb-10 flex flex-col items-center">
+            <div className="mb-6 flex flex-col items-center">
               <motion.div 
                 variants={itemVariants}
-                className="w-16 h-16 bg-brand-primary rounded-[16px] mb-6 flex items-center justify-center shadow-brand-sm border border-brand-border/20 cursor-pointer"
+                className="w-16 h-16 bg-brand-primary rounded-[16px] mb-5 flex items-center justify-center shadow-brand-sm border border-brand-border/20 cursor-pointer"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
@@ -113,44 +240,95 @@ const AuthFlow = ({ onComplete }) => {
               </motion.div>
               
               <motion.h2 
-                variants={itemVariants}
-                className="text-3xl font-bold tracking-tight text-txt-primary mb-2"
+                variants={itemVariants} 
+                className="text-2xl font-bold tracking-tight text-txt-primary mb-1"
               >
                 Finovo
               </motion.h2>
-              
               <motion.p 
-                variants={itemVariants}
-                className="text-txt-secondary text-sm font-medium tracking-wide text-center"
+                variants={itemVariants} 
+                className="text-xs font-semibold text-txt-secondary"
               >
-                Track. Understand. <span className="text-brand-primary font-semibold">Grow Your Money.</span>
+                Track. Understand. <span className="text-brand-primary font-bold">Grow Your Money.</span>
               </motion.p>
             </div>
 
+            {/* Backend Configuration Notice (Displays when .env is unconfigured) */}
+            {!backendConfigured && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5"
+              >
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold uppercase tracking-wider text-[10px]">Backend Setup Required</p>
+                  <p className="text-[11px] leading-relaxed opacity-95">
+                    Supabase credentials are not configured. Add <code className="font-mono text-[10px] bg-amber-500/15 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code> and <code className="font-mono text-[10px] bg-amber-500/15 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code> to <code className="font-mono text-[10px] bg-amber-500/15 px-1 py-0.5 rounded">.env</code> to enable live authentication.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* General Feedback Banners */}
+            {generalError && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-brand-error/10 border border-brand-error/30 text-brand-error text-xs font-semibold flex items-start gap-2"
+              >
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <span>{generalError}</span>
+              </motion.div>
+            )}
+
+            {successNotice && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-brand-success/10 border border-brand-success/30 text-brand-success text-xs font-semibold flex items-start gap-2"
+              >
+                <ShieldCheck size={16} className="shrink-0 mt-0.5" />
+                <span>{successNotice}</span>
+              </motion.div>
+            )}
+
             {/* Login Form */}
-            <form onSubmit={handleLogin} className="flex-1 flex flex-col justify-between">
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between">
               <motion.div variants={itemVariants} className="space-y-4">
                 <InputField
                   label="Email Address"
                   type="email"
                   icon={Mail}
                   value={email}
-                  onChange={setEmail}
-                  placeholder="alex@finovo.io"
+                  onChange={(val) => {
+                    setEmail(val);
+                    if (errors.email) setErrors(prev => ({ ...prev, email: null }));
+                    if (generalError) setGeneralError('');
+                  }}
+                  error={errors.email}
+                  placeholder="name@email.com"
+                  disabled={isLoading}
                 />
                 <InputField
                   label="Password"
                   type="password"
                   icon={Lock}
                   value={password}
-                  onChange={setPassword}
+                  onChange={(val) => {
+                    setPassword(val);
+                    if (errors.password) setErrors(prev => ({ ...prev, password: null }));
+                    if (generalError) setGeneralError('');
+                  }}
+                  error={errors.password}
                   placeholder="••••••••"
+                  disabled={isLoading}
                 />
 
                 <div className="flex justify-end -mt-1">
                   <button 
                     type="button"
-                    onClick={() => setView('forgot')}
+                    onClick={() => {
+                      handleClearMessages();
+                      setView('forgot');
+                    }}
                     className="text-xs text-txt-secondary font-bold hover:text-brand-primary transition-colors uppercase tracking-widest cursor-pointer"
                   >
                     Forgot Password?
@@ -162,9 +340,19 @@ const AuthFlow = ({ onComplete }) => {
                 {/* Large primary Sign In button */}
                 <button
                   type="submit"
-                  className="btn-primary rounded-[14px]"
+                  disabled={isLoading}
+                  className="btn-primary rounded-[14px] shadow-brand-sm flex items-center justify-center gap-2"
                 >
-                  Sign In <ArrowRight size={18} />
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Signing In...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Sign In</span> <ArrowRight size={18} />
+                    </>
+                  )}
                 </button>
 
                 {/* Divider */}
@@ -174,10 +362,12 @@ const AuthFlow = ({ onComplete }) => {
                   <div className="h-[1px] flex-1 bg-brand-border" />
                 </div>
 
-                {/* Modern Google Sign In button */}
+                {/* Google Sign In button */}
                 <button 
                   type="button"
-                  className="btn-secondary rounded-[14px]"
+                  onClick={handleGoogleSignIn}
+                  disabled={isLoading}
+                  className="btn-secondary rounded-[14px] flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path
@@ -207,7 +397,10 @@ const AuthFlow = ({ onComplete }) => {
               <p className="text-xs text-txt-secondary font-medium">
                 New to Finovo?{' '}
                 <button 
-                  onClick={() => setView('signup')}
+                  onClick={() => {
+                    handleClearMessages();
+                    setView('signup');
+                  }}
                   className="text-brand-primary font-bold uppercase tracking-widest hover:opacity-80 transition-colors cursor-pointer"
                 >
                   Create Account
@@ -229,47 +422,104 @@ const AuthFlow = ({ onComplete }) => {
             {/* Back to Login Button */}
             <motion.button 
               variants={itemVariants}
-              onClick={() => setView('login')}
-              className="w-10 h-10 bg-bg-card border border-brand-border rounded-xl flex items-center justify-center mb-8 text-txt-secondary hover:text-txt-primary transition-all self-start cursor-pointer"
+              onClick={() => {
+                handleClearMessages();
+                setView('login');
+              }}
+              className="w-10 h-10 bg-bg-card border border-brand-border rounded-xl flex items-center justify-center mb-6 text-txt-secondary hover:text-txt-primary transition-all self-start cursor-pointer"
             >
               <ChevronLeft size={18} />
             </motion.button>
 
-            <div className="mb-8">
+            <div className="mb-6">
               <motion.h2 variants={itemVariants} className="text-2xl font-bold tracking-tight mb-2">Create Account</motion.h2>
               <motion.p variants={itemVariants} className="text-txt-secondary text-sm font-medium leading-relaxed">Experience a new standard of wealth management.</motion.p>
             </div>
 
+            {/* Backend Configuration Warning */}
+            {!backendConfigured && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5"
+              >
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold uppercase tracking-wider text-[10px]">Backend Setup Required</p>
+                  <p className="text-[11px] leading-relaxed opacity-95">
+                    Account registration requires active Supabase backend credentials in <code className="font-mono text-[10px] bg-amber-500/15 px-1 py-0.5 rounded">.env</code>.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {generalError && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-brand-error/10 border border-brand-error/30 text-brand-error text-xs font-semibold flex items-start gap-2"
+              >
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <span>{generalError}</span>
+              </motion.div>
+            )}
+
+            {successNotice && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-brand-success/10 border border-brand-success/30 text-brand-success text-xs font-semibold flex items-start gap-2"
+              >
+                <ShieldCheck size={16} className="shrink-0 mt-0.5" />
+                <span>{successNotice}</span>
+              </motion.div>
+            )}
+
             {/* Signup Form */}
-            <form onSubmit={handleLogin} className="flex-1 flex flex-col justify-between">
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between">
               <motion.div variants={itemVariants} className="space-y-4">
                 <InputField
                   label="Full Name"
                   type="text"
                   icon={ShieldCheck}
                   value={name}
-                  onChange={setName}
-                  placeholder="Alex Harrison"
+                  onChange={(val) => {
+                    setName(val);
+                    if (errors.name) setErrors(prev => ({ ...prev, name: null }));
+                    if (generalError) setGeneralError('');
+                  }}
+                  error={errors.name}
+                  placeholder="Your Full Name"
+                  disabled={isLoading}
                 />
                 <InputField
                   label="Email Address"
                   type="email"
                   icon={Mail}
                   value={email}
-                  onChange={setEmail}
-                  placeholder="alex@finovo.io"
+                  onChange={(val) => {
+                    setEmail(val);
+                    if (errors.email) setErrors(prev => ({ ...prev, email: null }));
+                    if (generalError) setGeneralError('');
+                  }}
+                  error={errors.email}
+                  placeholder="name@email.com"
+                  disabled={isLoading}
                 />
                 <InputField
                   label="Password"
                   type="password"
                   icon={Lock}
                   value={password}
-                  onChange={setPassword}
+                  onChange={(val) => {
+                    setPassword(val);
+                    if (errors.password) setErrors(prev => ({ ...prev, password: null }));
+                    if (generalError) setGeneralError('');
+                  }}
+                  error={errors.password}
                   placeholder="••••••••"
+                  disabled={isLoading}
                 />
 
                 <div className="mb-6 mt-4 flex items-start gap-4 p-4 bg-brand-primary/5 rounded-[12px] border border-brand-border">
-                  <input type="checkbox" className="mt-1 w-4 h-4 accent-brand-primary rounded bg-bg-card border-brand-border" />
+                  <input type="checkbox" defaultChecked className="mt-1 w-4 h-4 accent-brand-primary rounded bg-bg-card border-brand-border" />
                   <p className="text-[10px] text-txt-secondary leading-relaxed font-semibold uppercase tracking-wider">
                     I accept the <span className="text-brand-primary font-bold">Terms of Wealth</span> and the <span className="text-brand-primary font-bold">Privacy Protocol</span>.
                   </p>
@@ -279,9 +529,19 @@ const AuthFlow = ({ onComplete }) => {
               <motion.div variants={itemVariants} className="mt-6">
                 <button
                   type="submit"
-                  className="btn-primary rounded-[14px]"
+                  disabled={isLoading}
+                  className="btn-primary rounded-[14px] shadow-brand-sm flex items-center justify-center gap-2"
                 >
-                  Access Account <ArrowRight size={18} />
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Creating Account...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Access Account</span> <ArrowRight size={18} />
+                    </>
+                  )}
                 </button>
               </motion.div>
             </form>
@@ -290,7 +550,10 @@ const AuthFlow = ({ onComplete }) => {
               <p className="text-xs text-txt-secondary font-medium">
                 Already have an account?{' '}
                 <button 
-                  onClick={() => setView('login')}
+                  onClick={() => {
+                    handleClearMessages();
+                    setView('login');
+                  }}
                   className="text-brand-primary font-bold uppercase tracking-widest hover:opacity-80 transition-colors cursor-pointer"
                 >
                   Sign In
@@ -312,35 +575,87 @@ const AuthFlow = ({ onComplete }) => {
             {/* Back Button */}
             <motion.button 
               variants={itemVariants}
-              onClick={() => setView('login')}
-              className="w-10 h-10 bg-bg-card border border-brand-border rounded-xl flex items-center justify-center mb-8 text-txt-secondary hover:text-txt-primary transition-all self-start cursor-pointer"
+              onClick={() => {
+                handleClearMessages();
+                setView('login');
+              }}
+              className="w-10 h-10 bg-bg-card border border-brand-border rounded-xl flex items-center justify-center mb-6 text-txt-secondary hover:text-txt-primary transition-all self-start cursor-pointer"
             >
               <ChevronLeft size={18} />
             </motion.button>
 
-            <div className="mb-8">
+            <div className="mb-6">
               <motion.h2 variants={itemVariants} className="text-2xl font-bold tracking-tight mb-2">Protocol Reset</motion.h2>
-              <motion.p variants={itemVariants} className="text-txt-secondary text-sm font-medium">Verify your identity to regain access.</motion.p>
+              <motion.p variants={itemVariants} className="text-txt-secondary text-sm font-medium">Verify your registered email to regain access.</motion.p>
             </div>
 
-            <div className="flex-1 flex flex-col justify-between">
+            {/* Backend Configuration Warning */}
+            {!backendConfigured && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5"
+              >
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold uppercase tracking-wider text-[10px]">Backend Setup Required</p>
+                  <p className="text-[11px] leading-relaxed opacity-95">
+                    Password recovery requires configured Supabase credentials in <code className="font-mono text-[10px] bg-amber-500/15 px-1 py-0.5 rounded">.env</code>.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {generalError && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-5 p-3.5 rounded-xl bg-brand-error/10 border border-brand-error/30 text-brand-error text-xs font-semibold flex items-start gap-2"
+              >
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <span>{generalError}</span>
+              </motion.div>
+            )}
+
+            <form onSubmit={handleSendRecovery} className="flex-1 flex flex-col justify-between">
               <motion.div variants={itemVariants} className="space-y-4">
                 <InputField
                   label="Registered Email"
                   type="email"
                   icon={Mail}
                   value={email}
-                  onChange={setEmail}
-                  placeholder="alex@finovo.io"
+                  onChange={(val) => {
+                    setEmail(val);
+                    if (errors.email) setErrors(prev => ({ ...prev, email: null }));
+                    if (generalError) setGeneralError('');
+                  }}
+                  error={errors.email}
+                  placeholder="name@email.com"
+                  disabled={isLoading}
                 />
+
+                {recoverySent && (
+                  <div className="p-3 bg-brand-success/10 border border-brand-success/20 rounded-xl text-xs font-semibold text-brand-success flex items-center gap-2">
+                    <ShieldCheck size={16} />
+                    <span>✓ Recovery instructions dispatched. Redirecting to sign in...</span>
+                  </div>
+                )}
               </motion.div>
 
               <motion.div variants={itemVariants} className="space-y-6 mt-6">
                 <button
-                  onClick={() => setView('login')}
-                  className="btn-primary rounded-[14px]"
+                  type="submit"
+                  disabled={isLoading || recoverySent}
+                  className="btn-primary rounded-[14px] shadow-brand-sm flex items-center justify-center gap-2"
                 >
-                  Send Recovery Key <ArrowRight size={18} />
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Dispatching Key...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Send Recovery Key</span> <ArrowRight size={18} />
+                    </>
+                  )}
                 </button>
                 
                 <div className="flex items-center gap-4 p-5 bg-bg-card border border-brand-border rounded-[16px]">
@@ -348,11 +663,23 @@ const AuthFlow = ({ onComplete }) => {
                     <ShieldCheck size={20} />
                   </div>
                   <p className="text-[10px] text-txt-secondary font-bold uppercase tracking-widest leading-normal">
-                    An encrypted recovery link will be sent to your primary email address.
+                    256-bit encrypted authentication recovery channel.
                   </p>
                 </div>
               </motion.div>
-            </div>
+            </form>
+
+            <motion.div variants={itemVariants} className="text-center pb-8 mt-6">
+              <button 
+                onClick={() => {
+                  handleClearMessages();
+                  setView('login');
+                }}
+                className="text-xs text-brand-primary font-bold uppercase tracking-widest hover:opacity-80 transition-colors cursor-pointer"
+              >
+                Return to Login
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

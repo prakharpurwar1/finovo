@@ -1,11 +1,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Home, Clock, Users, User, Plus } from 'lucide-react';
+import { Home, Clock, Activity, Users, User, Plus } from 'lucide-react';
 
 const Layout = ({ children, activeTab, onTabChange, onAdd }) => {
   const tabs = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'history', icon: Clock, label: 'History' },
+    { id: 'insights', icon: Activity, label: 'Analytics' },
     { id: 'splits', icon: Users, label: 'Splits' },
     { id: 'profile', icon: User, label: 'Profile' }
   ];
@@ -30,15 +31,15 @@ const Layout = ({ children, activeTab, onTabChange, onAdd }) => {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="absolute bottom-0 left-0 right-0 z-30 px-6 pb-8 pt-4 bg-gradient-to-t from-bg-app via-bg-app/90 to-transparent">
-        <div className="bg-bg-card border border-brand-border rounded-[24px] px-2 py-2 flex items-center justify-between shadow-brand-md">
+      <nav className="absolute bottom-0 left-0 right-0 z-30 px-4 pb-8 pt-4 bg-gradient-to-t from-bg-app via-bg-app/90 to-transparent">
+        <div className="bg-bg-card border border-brand-border rounded-[24px] px-1 py-1.5 flex items-center justify-between shadow-brand-md">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className="relative flex flex-col items-center justify-center py-2 px-6 flex-1 cursor-pointer"
+                className="relative flex flex-col items-center justify-center py-2 px-2 flex-1 cursor-pointer"
               >
                 {isActive && (
                   <motion.div

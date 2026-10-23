@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, MoreVertical, Plus, Users,
-  CheckCircle2, ArrowUp, ArrowDown, Info
+  ArrowLeft, Users,
+  CheckCircle2, ArrowUp, ArrowDown, Info, Receipt
 } from 'lucide-react';
+import { formatCurrency, splitMoneyEvenly } from '../utils/currency.js';
 
 const MemberItem = ({ name, amount, type, status, avatar }) => {
   const isDebt = type === 'debt';
@@ -24,7 +25,7 @@ const MemberItem = ({ name, amount, type, status, avatar }) => {
       </div>
       <div className="text-right">
         <div className={`text-sm font-bold flex items-center justify-end gap-1 ${isSettled ? 'text-txt-disabled' : (isDebt ? 'text-brand-success' : 'text-brand-error')}`}>
-          ₹{amount.toLocaleString()}
+          {formatCurrency(amount, { minimumFractionDigits: 2 })}
           {isSettled ? <CheckCircle2 size={13} /> : (isDebt ? <ArrowDown size={13} /> : <ArrowUp size={13} />)}
         </div>
       </div>
@@ -43,13 +44,20 @@ const ActivityItem = ({ title, user, date, amount }) => (
         <h5 className="text-xs font-semibold text-txt-primary">{title}</h5>
         <span className="text-[9px] font-bold text-txt-secondary/60 uppercase tracking-wider">{date}</span>
       </div>
-      <p className="text-[10px] text-txt-secondary font-semibold">Added by <span className="text-brand-primary font-bold">{user}</span> • ₹{amount}</p>
+      <p className="text-[10px] text-txt-secondary font-semibold">Added by <span className="text-brand-primary font-bold">{user}</span> • {formatCurrency(amount)}</p>
     </div>
   </div>
 );
 
-const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
+const SplitDetail = ({ onBack, group, groupName = "Expense Group", groupExpenses = [] }) => {
   const [activeTab, setActiveTab] = useState('Overview');
+
+  const title = group?.title || groupName;
+  const membersCount = group?.members || 2;
+  const totalSpend = groupExpenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+  // Exact even split per member
+  const memberShares = totalSpend > 0 ? splitMoneyEvenly(totalSpend, membersCount) : [];
 
   return (
     <div className="fixed inset-0 z-[60] bg-bg-app flex flex-col overflow-hidden text-txt-primary">
@@ -58,25 +66,27 @@ const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
         <button onClick={onBack} className="w-10 h-10 rounded-xl bg-bg-app border border-brand-border flex items-center justify-center text-txt-secondary cursor-pointer">
           <ArrowLeft size={18} />
         </button>
-        <h2 className="text-xs font-bold uppercase tracking-wider">{groupName}</h2>
-        <button className="w-10 h-10 rounded-xl bg-bg-app border border-brand-border flex items-center justify-center text-txt-secondary cursor-pointer">
-          <MoreVertical size={18} />
-        </button>
+        <h2 className="text-xs font-bold uppercase tracking-wider">{title}</h2>
+        <div className="w-10" />
       </div>
 
       <div className="flex-1 overflow-y-auto pb-32">
         {/* Group Hero Section */}
         <div className="p-6 text-center bg-bg-card border-b border-brand-border relative">
           <span className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-1 block">Total Group Spend</span>
-          <h1 className="text-4xl font-bold text-txt-primary mb-4 tracking-tight">₹24,850</h1>
+          <h1 className="text-4xl font-bold text-txt-primary mb-4 tracking-tight">
+            {formatCurrency(totalSpend)}
+          </h1>
           <div className="flex justify-center gap-2">
             <div className="px-3 py-1 rounded-full bg-brand-primary/5 border border-brand-primary/10 flex items-center gap-1.5">
               <Users size={12} className="text-brand-primary" />
-              <span className="text-[10px] font-semibold text-txt-secondary">5 Members</span>
+              <span className="text-[10px] font-semibold text-txt-secondary">{membersCount} Members</span>
             </div>
             <div className="px-3 py-1 rounded-full bg-brand-success/10 border border-brand-success/25 flex items-center gap-1.5">
               <CheckCircle2 size={12} className="text-brand-success" />
-              <span className="text-[10px] font-bold text-brand-success uppercase tracking-wider">3 Settled</span>
+              <span className="text-[10px] font-bold text-brand-success uppercase tracking-wider">
+                {group?.status === 'settled' ? 'Settled' : 'Active'}
+              </span>
             </div>
           </div>
         </div>
@@ -112,10 +122,23 @@ const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
               {/* Balance Breakdown */}
               <section>
                 <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-3 px-1">Member Breakdown</h3>
-                <MemberItem name="Alex (You)" amount={1200} type="credit" avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" />
-                <MemberItem name="Rahul" amount={850} type="debt" avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Rahul" />
-                <MemberItem name="Sneha" amount={2400} status="settled" avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Sneha" />
-                <MemberItem name="Vikram" amount={150} type="debt" avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Vikram" />
+                <MemberItem 
+                  name="You (Creator)" 
+                  amount={memberShares[0] || 0} 
+                  type="credit" 
+                  status={group?.status}
+                  avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=You" 
+                />
+                {[...Array(Math.max(1, membersCount - 1))].map((_, i) => (
+                  <MemberItem 
+                    key={i}
+                    name={`Member ${i + 2}`} 
+                    amount={memberShares[i + 1] || 0} 
+                    type="debt" 
+                    status={group?.status}
+                    avatar={`https://api.dicebear.com/7.x/avataaars/svg?seed=Member${i + 2}`} 
+                  />
+                ))}
               </section>
 
               {/* Settlement Suggestion Card */}
@@ -126,15 +149,14 @@ const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-txt-primary">Smart Settlement</h4>
-                    <p className="text-[9px] text-brand-primary font-bold uppercase tracking-wider">Optimized Suggestions</p>
+                    <p className="text-[9px] text-brand-primary font-bold uppercase tracking-wider">Optimized Share</p>
                   </div>
                 </div>
                 <p className="text-xs text-txt-secondary leading-relaxed mb-4">
-                  You can settle all your debts by paying <span className="text-txt-primary font-bold">₹1,000</span> to Rahul. Vikram's debt can be adjusted with Sneha's credit.
+                  {totalSpend > 0 
+                    ? `Total spend is ${formatCurrency(totalSpend)}. Each member owes approximately ${formatCurrency(memberShares[0] || 0)}.`
+                    : "No group balances recorded yet. Add an expense and attach it to this group to calculate optimal settlements."}
                 </p>
-                <button className="w-full bg-brand-primary text-white py-3 rounded-lg text-xs font-bold hover:opacity-90 transition-all cursor-pointer">
-                  Optimize Now
-                </button>
               </div>
             </motion.div>
           )}
@@ -148,20 +170,23 @@ const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
               className="px-6 space-y-3"
             >
               <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-3 px-1">Expense Log</h3>
-              <div className="bg-bg-card border border-brand-border rounded-xl p-4 flex justify-between items-center">
-                <div>
-                  <h4 className="text-sm font-semibold text-txt-primary">South Goa Dinner</h4>
-                  <p className="text-[11px] text-txt-secondary mt-0.5">Paid by Alex • 14 June</p>
+              {groupExpenses.length > 0 ? (
+                groupExpenses.map((exp, idx) => (
+                  <div key={idx} className="bg-bg-card border border-brand-border rounded-xl p-4 flex justify-between items-center">
+                    <div>
+                      <h4 className="text-sm font-semibold text-txt-primary">{exp.merchant || 'Group Expense'}</h4>
+                      <p className="text-[11px] text-txt-secondary mt-0.5">{exp.date || 'Today'}</p>
+                    </div>
+                    <span className="text-sm font-bold text-txt-primary">{formatCurrency(exp.amount)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="py-12 text-center bg-bg-card border border-brand-border rounded-xl p-6">
+                  <Receipt size={22} className="text-txt-secondary/40 mx-auto mb-2" />
+                  <p className="text-xs text-txt-secondary font-semibold">No group expenses recorded yet.</p>
+                  <p className="text-[10px] text-txt-secondary/60 mt-0.5">Use Add Expense with Group Expense enabled to record items for this group.</p>
                 </div>
-                <span className="text-sm font-bold text-txt-primary">₹2,400</span>
-              </div>
-              <div className="bg-bg-card border border-brand-border rounded-xl p-4 flex justify-between items-center">
-                <div>
-                  <h4 className="text-sm font-semibold text-txt-primary">Scuba Diving Fee</h4>
-                  <p className="text-[11px] text-txt-secondary mt-0.5">Paid by Rahul • 13 June</p>
-                </div>
-                <span className="text-sm font-bold text-txt-primary">₹12,000</span>
-              </div>
+              )}
             </motion.div>
           )}
 
@@ -173,11 +198,39 @@ const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
               exit={{ opacity: 0, y: -5 }}
               className="px-6"
             >
-              <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-4 px-1">Group Activity</h3>
-              <ActivityItem title="South Goa Dinner" user="Alex" date="Today, 9:00 PM" amount="2,400" />
-              <ActivityItem title="Scuba Diving Fee" user="Rahul" date="Yesterday" amount="12,000" />
-              <ActivityItem title="Taxi to Airport" user="Sneha" date="12 May" amount="800" />
-              <ActivityItem title="Hotel Booking" user="Alex" date="10 May" amount="8,500" />
+              <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-4 px-1">Group Activity Log</h3>
+              {groupExpenses.length > 0 ? (
+                <div className="space-y-1">
+                  {groupExpenses.map((exp, idx) => (
+                    <ActivityItem
+                      key={idx}
+                      title={exp.merchant || 'Group Expense'}
+                      user="You"
+                      date={exp.date || 'Recently'}
+                      amount={exp.amount}
+                    />
+                  ))}
+                  <ActivityItem
+                    title={`Group "${title}" created`}
+                    user="You"
+                    date={group?.date || 'Recently'}
+                    amount={0}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <ActivityItem
+                    title={`Group "${title}" created`}
+                    user="You"
+                    date={group?.date || 'Recently'}
+                    amount={0}
+                  />
+                  <div className="py-8 text-center bg-bg-card border border-brand-border rounded-xl p-4 mt-4">
+                    <p className="text-xs text-txt-secondary font-semibold">All caught up!</p>
+                    <p className="text-[10px] text-txt-secondary/60 mt-0.5">Transactions added to this group will append to this activity feed.</p>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -185,11 +238,11 @@ const SplitDetail = ({ onBack, groupName = "Goa Trip 2024" }) => {
 
       {/* Action Footer */}
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-bg-app via-bg-app/90 to-transparent pt-8 flex gap-3 z-10">
-        <button className="flex-1 bg-brand-primary text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer">
-          Settle Now
-        </button>
-        <button className="w-12 h-12 bg-bg-card border border-brand-border rounded-xl flex items-center justify-center text-txt-secondary hover:text-brand-primary cursor-pointer active:scale-95 transition-all">
-          <Plus size={20} />
+        <button 
+          onClick={onBack}
+          className="flex-1 bg-brand-primary text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer shadow-brand-sm"
+        >
+          Back to Groups
         </button>
       </div>
     </div>

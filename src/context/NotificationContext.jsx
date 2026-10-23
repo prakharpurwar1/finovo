@@ -37,7 +37,7 @@ export const NotificationProvider = ({ children }) => {
   }, []);
 
   const showToast = useCallback((message, type = 'info', duration = 3500) => {
-    setToast({ message, type, id: Date.now() });
+    setToast({ message, type, duration, id: Date.now() });
   }, []);
 
   // Auto-hide toast after duration
@@ -45,7 +45,7 @@ export const NotificationProvider = ({ children }) => {
     if (toast) {
       const timer = setTimeout(() => {
         setToast(null);
-      }, 3500);
+      }, toast.duration || 3500);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -117,7 +117,7 @@ export const NotificationProvider = ({ children }) => {
           body: message || '',
           icon: '/favicon.ico'
         });
-      } catch (e) {
+      } catch {
         // Some browsers on mobile require service worker
       }
     }
