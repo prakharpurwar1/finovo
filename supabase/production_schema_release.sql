@@ -1,12 +1,12 @@
 -- ==============================================================================
 -- Finovo: Complete Production Database Schema & Security Release
 -- Target Engine: Supabase PostgreSQL 15+
--- Version: Production 1.0.0 (Phase 8 Release)
+-- Version: Production 1.0.1 (Phase 8 Release - Non-Destructive Auto-Upgrade)
 --
 -- This script is completely IDEMPOTENT. It can be run safely on a fresh Supabase
 -- project or an existing project without destroying data.
 --
--- Tables Provisioned:
+-- Tables Provisioned & Upgraded:
 -- 1. public.profiles (1:1 with auth.users)
 -- 2. public.user_preferences (User configuration & AI settings)
 -- 3. public.categories (Default system categories & custom user categories)
@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS preferred_currency TEXT NOT NULL DEFAULT 'INR';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE;
+
 DROP TRIGGER IF EXISTS trg_profiles_updated_at ON public.profiles;
 CREATE TRIGGER trg_profiles_updated_at
   BEFORE UPDATE ON public.profiles
@@ -84,6 +89,15 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR';
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS sms_permission TEXT NOT NULL DEFAULT 'Not Requested';
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS categorization_preference TEXT NOT NULL DEFAULT 'instant';
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS ai_categorization_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS theme_mode TEXT NOT NULL DEFAULT 'dark';
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'neutral';
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS avatar_style TEXT DEFAULT 'avatar';
+
 DROP TRIGGER IF EXISTS trg_user_preferences_updated_at ON public.user_preferences;
 CREATE TRIGGER trg_user_preferences_updated_at
   BEFORE UPDATE ON public.user_preferences
@@ -103,6 +117,11 @@ CREATE TABLE IF NOT EXISTS public.categories (
   created_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
+
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS icon TEXT;
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'expense';
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_user_name_idx 
   ON public.categories (COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid), name);
@@ -128,6 +147,14 @@ CREATE TABLE IF NOT EXISTS public.budgets (
   created_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
+
+-- Ensure newly required columns exist on pre-existing tables before creating indexes
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id) ON DELETE CASCADE;
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS category_name TEXT;
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR';
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly';
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS month DATE;
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS start_date DATE NOT NULL DEFAULT CURRENT_DATE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_budgets_user_category_period
   ON public.budgets (user_id, COALESCE(category_name, '__GLOBAL__'), period);
@@ -164,6 +191,18 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR';
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS category_name TEXT NOT NULL DEFAULT 'Uncategorized';
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS time TIME NOT NULL DEFAULT CURRENT_TIME;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'UPI';
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS note TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS import_metadata JSONB;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON public.transactions(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON public.transactions(user_id, category_id);
 
@@ -189,6 +228,11 @@ CREATE TABLE IF NOT EXISTS public.savings_goals (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
+ALTER TABLE public.savings_goals ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR';
+ALTER TABLE public.savings_goals ADD COLUMN IF NOT EXISTS target_date DATE;
+ALTER TABLE public.savings_goals ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general';
+ALTER TABLE public.savings_goals ADD COLUMN IF NOT EXISTS is_completed BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_savings_goals_user ON public.savings_goals(user_id);
 
 DROP TRIGGER IF EXISTS trg_savings_goals_updated_at ON public.savings_goals;
@@ -211,6 +255,22 @@ CREATE TABLE IF NOT EXISTS public.category_rules (
   created_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW())
 );
+
+ALTER TABLE public.category_rules ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL;
+ALTER TABLE public.category_rules ADD COLUMN IF NOT EXISTS match_type TEXT NOT NULL DEFAULT 'exact';
+ALTER TABLE public.category_rules ADD COLUMN IF NOT EXISTS transaction_type TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE public.category_rules ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'category_rules_transaction_type_check'
+  ) THEN
+    ALTER TABLE public.category_rules 
+      ADD CONSTRAINT category_rules_transaction_type_check 
+      CHECK (transaction_type IN ('expense', 'income', 'all'));
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_category_rules_user_id ON public.category_rules(user_id);
 CREATE INDEX IF NOT EXISTS idx_category_rules_active ON public.category_rules(user_id, is_active);
