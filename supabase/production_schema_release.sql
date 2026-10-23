@@ -1,10 +1,11 @@
 -- ==============================================================================
 -- Finovo: Complete Production Database Schema & Security Release
 -- Target Engine: Supabase PostgreSQL 15+
--- Version: Production 1.0.1 (Phase 8 Release - Non-Destructive Auto-Upgrade)
+-- Version: Production 1.0.2 (Phase 8 Release - Self-Healing & Reconciliation)
 --
 -- This script is completely IDEMPOTENT. It can be run safely on a fresh Supabase
--- project or an existing project without destroying data.
+-- project or an existing project without destroying genuine data.
+-- Automatically reconciles legacy columns and removes stale duplicate test rows.
 --
 -- Tables Provisioned & Upgraded:
 -- 1. public.profiles (1:1 with auth.users)
@@ -123,6 +124,17 @@ ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS color TEXT;
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'expense';
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Deduplicate any duplicate categories with identical name per user, preserving the newest record
+DELETE FROM public.categories c1
+USING public.categories c2
+WHERE COALESCE(c1.user_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(c2.user_id, '00000000-0000-0000-0000-000000000000'::uuid)
+  AND c1.name = c2.name
+  AND (
+    c1.updated_at < c2.updated_at 
+    OR (c1.updated_at = c2.updated_at AND c1.created_at < c2.created_at)
+    OR (c1.updated_at = c2.updated_at AND c1.created_at = c2.created_at AND c1.id < c2.id)
+  );
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_user_name_idx 
   ON public.categories (COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid), name);
 
@@ -155,6 +167,25 @@ ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAU
 ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly';
 ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS month DATE;
 ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS start_date DATE NOT NULL DEFAULT CURRENT_DATE;
+
+-- Auto-populate category_name for legacy budgets that only had category_id set
+UPDATE public.budgets b
+SET category_name = c.name
+FROM public.categories c
+WHERE b.category_id = c.id
+  AND b.category_name IS NULL;
+
+-- Deduplicate any duplicate budgets for the same user, category, and period, keeping the most recent entry
+DELETE FROM public.budgets b1
+USING public.budgets b2
+WHERE b1.user_id = b2.user_id
+  AND COALESCE(b1.category_name, '__GLOBAL__') = COALESCE(b2.category_name, '__GLOBAL__')
+  AND b1.period = b2.period
+  AND (
+    b1.updated_at < b2.updated_at 
+    OR (b1.updated_at = b2.updated_at AND b1.created_at < b2.created_at)
+    OR (b1.updated_at = b2.updated_at AND b1.created_at = b2.created_at AND b1.id < b2.id)
+  );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_budgets_user_category_period
   ON public.budgets (user_id, COALESCE(category_name, '__GLOBAL__'), period);
@@ -271,6 +302,17 @@ BEGIN
       CHECK (transaction_type IN ('expense', 'income', 'all'));
   END IF;
 END $$;
+
+-- Deduplicate any duplicate category rules with identical pattern per user
+DELETE FROM public.category_rules r1
+USING public.category_rules r2
+WHERE r1.user_id = r2.user_id
+  AND LOWER(TRIM(r1.merchant_pattern)) = LOWER(TRIM(r2.merchant_pattern))
+  AND (
+    r1.updated_at < r2.updated_at 
+    OR (r1.updated_at = r2.updated_at AND r1.created_at < r2.created_at)
+    OR (r1.updated_at = r2.updated_at AND r1.created_at = r2.created_at AND r1.id < r2.id)
+  );
 
 CREATE INDEX IF NOT EXISTS idx_category_rules_user_id ON public.category_rules(user_id);
 CREATE INDEX IF NOT EXISTS idx_category_rules_active ON public.category_rules(user_id, is_active);
