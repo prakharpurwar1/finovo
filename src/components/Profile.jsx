@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bell, Shield, Smartphone, Moon, 
   Download, LogOut, ChevronRight, 
   Wallet, Heart, X, CheckCircle2,
   Tag, Zap, Sparkles, Target, FileSpreadsheet, 
-  UploadCloud, RotateCcw, Trash2
+  UploadCloud, RotateCcw, Trash2, User,
+  Sliders, Database, SlidersHorizontal
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -17,23 +18,31 @@ import SavingsGoalsModal from './SavingsGoalsModal.jsx';
 import CsvImportModal from './CsvImportModal.jsx';
 import CsvExportModal from './CsvExportModal.jsx';
 
-const SettingItem = ({ icon: Icon, label, sublabel, color, onClick, rightElement, 'aria-label': ariaLabel }) => (
+const SettingCard = ({ icon: Icon, label, sublabel, color, onClick, rightElement, badge }) => (
   <motion.button
     whileHover={{ x: 2 }}
+    whileTap={{ scale: 0.99 }}
+    type="button"
     onClick={onClick}
-    aria-label={ariaLabel || label}
-    className="w-full flex items-center justify-between p-4 bg-bg-card border border-brand-border rounded-xl mb-3 hover:opacity-95 transition-all group cursor-pointer shadow-brand-sm text-txt-primary focus-visible:ring-2 focus-visible:ring-brand-primary outline-none"
+    className="w-full flex items-center justify-between p-3.5 sm:p-4 bg-bg-card border border-brand-border rounded-xl hover:border-brand-primary/40 transition-all group cursor-pointer shadow-brand-sm text-txt-primary outline-none text-left"
   >
-    <div className="flex items-center gap-3">
-      <div className={`w-9 h-9 rounded-lg ${color} flex items-center justify-center border border-brand-border shrink-0`}>
+    <div className="flex items-center gap-3 min-w-0 pr-2">
+      <div className={`w-9 h-9 rounded-xl ${color} flex items-center justify-center border border-brand-border shrink-0`}>
         <Icon size={16} />
       </div>
-      <div className="text-left">
-        <h4 className="text-sm font-semibold text-txt-primary">{label}</h4>
-        <p className="text-[10px] text-txt-secondary font-medium uppercase tracking-wider mt-0.5">{sublabel}</p>
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <h4 className="text-xs sm:text-sm font-semibold text-txt-primary truncate">{label}</h4>
+          {badge && (
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20 shrink-0">
+              {badge}
+            </span>
+          )}
+        </div>
+        <p className="text-[10px] text-txt-secondary font-medium uppercase tracking-wider mt-0.5 truncate">{sublabel}</p>
       </div>
     </div>
-    {rightElement ? rightElement : <ChevronRight size={16} className="text-txt-secondary group-hover:text-txt-primary transition-all" />}
+    {rightElement ? rightElement : <ChevronRight size={16} className="text-txt-secondary group-hover:text-txt-primary transition-all shrink-0" />}
   </motion.button>
 );
 
@@ -62,6 +71,14 @@ const Profile = ({
   const { darkMode, toggleDarkMode } = useTheme();
   const { notificationsEnabled, toggleNotifications, showToast } = useNotifications();
 
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
+  // Internal Sub-Tabs
+  const [profileTab, setProfileTab] = useState('financial'); // 'financial' | 'preferences' | 'data'
+
   // Modals state
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -76,7 +93,7 @@ const Profile = ({
   const userName = userProfile?.name?.trim() || (userProfile?.email ? userProfile.email.split('@')[0] : 'Welcome to Finovo');
   const userEmail = userProfile?.email || 'No email attached';
   const isPremium = Boolean(userProfile?.isPremium);
-  const planLabel = isPremium ? 'Premium Plan' : 'Free Plan';
+  const planLabel = isPremium ? 'Premium Tier' : 'Standard Member';
   const aiCategorizationEnabled = userProfile?.aiCategorizationEnabled !== false;
 
   const effectiveGender = userProfile?.gender || detectGender(userName);
@@ -90,10 +107,10 @@ const Profile = ({
 
   const hasBudgetSet = userProfile?.budgetLimit && Number(userProfile.budgetLimit) > 0;
   const budgetSublabel = budgets.length > 0
-    ? `${budgets.length} Targets • Global: ${formatCurrency(userProfile?.budgetLimit || 45000)}`
+    ? `${budgets.length} Targets • Limit: ${formatCurrency(userProfile?.budgetLimit || 45000)}`
     : hasBudgetSet
     ? `Monthly Limit: ${formatCurrency(userProfile.budgetLimit)}`
-    : 'Monthly Budget not set • Tap to configure';
+    : 'Set monthly budget limits';
 
   const smsStatus = userProfile?.smsPermission || 'Not Requested';
 
@@ -147,28 +164,33 @@ const Profile = ({
       }
     } else {
       navigator.clipboard?.writeText(window.location.origin);
-      showToast('Link copied to clipboard.', 'success');
+      showToast('Finovo web link copied to clipboard.', 'success');
     }
   };
 
   return (
-    <div className="p-6 pt-12 bg-bg-app min-h-screen text-txt-primary">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-6 pt-10 pb-20 bg-bg-app min-h-screen text-txt-primary">
+      {/* Top Header */}
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Profile</h2>
-          <p className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mt-0.5">Account & Preferences</p>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
+              <User size={18} />
+            </div>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-txt-primary">Profile</h2>
+          </div>
+          <p className="text-txt-secondary text-[11px] font-medium mt-0.5 ml-10">Account, Security & Financial Controls</p>
         </div>
-        <div className="px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
+        <div className="px-2.5 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
           <span className="text-[10px] font-bold text-brand-primary uppercase tracking-wider">{planLabel}</span>
         </div>
       </div>
 
-      {/* User Information Card */}
-      <div className="bg-bg-card border border-brand-border rounded-2xl p-6 mb-8 shadow-brand-md relative overflow-hidden">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 border-2 border-brand-primary/20 flex items-center justify-center font-bold text-2xl text-brand-primary overflow-hidden shrink-0 shadow-brand-sm">
+      {/* User Information Hero Card */}
+      <div className="bg-bg-card border border-brand-border rounded-2xl p-4 sm:p-5 mb-5 shadow-brand-md relative overflow-hidden">
+        <div className="flex items-center gap-3.5">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-brand-primary/10 border-2 border-brand-primary/20 flex items-center justify-center font-bold text-2xl text-brand-primary overflow-hidden shrink-0 shadow-brand-sm">
             {avatarStyle === 'avatar' && avatarUrl && !imgError ? (
               <img 
                 src={avatarUrl} 
@@ -181,13 +203,13 @@ const Profile = ({
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-txt-primary truncate">{userName}</h3>
+            <h3 className="text-base sm:text-lg font-bold text-txt-primary truncate">{userName}</h3>
             <p className="text-xs text-txt-secondary truncate mt-0.5">{userEmail}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-[10px] bg-bg-app border border-brand-border px-2 py-0.5 rounded-md text-txt-secondary font-medium">
-                Joined {joinDate}
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <span className="text-[9px] bg-bg-app border border-brand-border px-2 py-0.5 rounded-md text-txt-secondary font-medium">
+                Member since {joinDate}
               </span>
-              <span className="text-[10px] bg-bg-app border border-brand-border px-2 py-0.5 rounded-md text-txt-secondary font-medium capitalize">
+              <span className="text-[9px] bg-bg-app border border-brand-border px-2 py-0.5 rounded-md text-txt-secondary font-medium capitalize">
                 {effectiveGender}
               </span>
             </div>
@@ -195,13 +217,14 @@ const Profile = ({
         </div>
 
         {/* Avatar Display Style Toggle */}
-        <div className="mt-5 pt-4 border-t border-brand-border flex items-center justify-between">
-          <span className="text-xs font-semibold text-txt-secondary">Avatar Style:</span>
-          <div className="flex gap-1.5 bg-bg-app p-1 rounded-xl border border-brand-border">
+        <div className="mt-4 pt-3 border-t border-brand-border/60 flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-txt-secondary">Avatar Mode:</span>
+          <div className="flex gap-1 bg-bg-app p-0.5 rounded-xl border border-brand-border">
             <button
+              type="button"
               onClick={() => onUpdateProfile && onUpdateProfile({ avatarStyle: 'avatar' })}
               aria-label="Use animated illustration avatar"
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                 avatarStyle === 'avatar' 
                   ? 'bg-brand-primary text-white shadow-brand-sm' 
                   : 'text-txt-secondary hover:text-txt-primary'
@@ -210,9 +233,10 @@ const Profile = ({
               🎨 Illustration
             </button>
             <button
+              type="button"
               onClick={() => onUpdateProfile && onUpdateProfile({ avatarStyle: 'initials' })}
               aria-label="Use text initials avatar"
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                 avatarStyle === 'initials' 
                   ? 'bg-brand-primary text-white shadow-brand-sm' 
                   : 'text-txt-secondary hover:text-txt-primary'
@@ -224,172 +248,232 @@ const Profile = ({
         </div>
       </div>
 
-      {/* Financial Management */}
-      <div className="mb-8">
-        <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-3 px-1">Financial Management</h3>
-        
-        {/* Spending Targets & Budgets */}
-        <SettingItem 
-          icon={Wallet} 
-          label="Spending Budgets" 
-          sublabel={budgetSublabel} 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={() => setShowBudgetModal(true)}
-        />
-
-        {/* Savings Goals */}
-        <SettingItem 
-          icon={Target} 
-          label="Savings Goals" 
-          sublabel={`${savingsGoals.length} Active Targets • Contribute & Track`} 
-          color="bg-brand-success/10 text-brand-success" 
-          onClick={() => setShowSavingsModal(true)}
-        />
-
-        {/* Smart Categorisation Rules */}
-        <SettingItem 
-          icon={Tag} 
-          label="Personal Merchant Rules" 
-          sublabel={`${userRules.length} Custom Merchant Rules Active`} 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={() => setShowRulesModal(true)}
-        />
-      </div>
-
-      {/* Data Management & Import/Export */}
-      <div className="mb-8">
-        <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-3 px-1">Data & Banking Records</h3>
-        
-        {/* CSV Import */}
-        <SettingItem 
-          icon={UploadCloud} 
-          label="Import Statement (CSV)" 
-          sublabel="Upload Bank CSV with Column Mapping" 
-          color="bg-blue-500/10 text-blue-500" 
-          onClick={() => setShowCsvImportModal(true)}
-        />
-
-        {/* CSV Export */}
-        <SettingItem 
-          icon={FileSpreadsheet} 
-          label="Export Ledger (CSV)" 
-          sublabel="Filtered Spreadsheet Download (Injection Safe)" 
-          color="bg-emerald-500/10 text-emerald-500" 
-          onClick={() => setShowCsvExportModal(true)}
-        />
-
-        {/* JSON Full Backup */}
-        <SettingItem 
-          icon={Download} 
-          label="Full Backup (JSON)" 
-          sublabel="Download Complete Profile & Financial Records" 
-          color="bg-purple-500/10 text-purple-500" 
-          onClick={handleExportData}
-        />
-      </div>
-
-      {/* Preferences & System */}
-      <div className="mb-8">
-        <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-3 px-1">Preferences & Security</h3>
-        
-        <SettingItem 
-          icon={Moon} 
-          label="Dark Mode" 
-          sublabel={darkMode ? "Enabled" : "Disabled"} 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={toggleDarkMode}
-          rightElement={
-            <div
-              onClick={(e) => { e.stopPropagation(); toggleDarkMode(); }}
-              className={`w-12 h-6.5 rounded-full p-1 transition-colors duration-200 relative shrink-0 focus:outline-none cursor-pointer flex items-center
-                ${darkMode ? 'bg-brand-primary' : 'bg-brand-border'}`}
+      {/* Profile Section Tabs */}
+      <div className="flex border-b border-brand-border mb-5 gap-2 px-1">
+        {[
+          { id: 'financial', label: 'Financial Targets', icon: Wallet },
+          { id: 'preferences', label: 'Preferences & Security', icon: SlidersHorizontal },
+          { id: 'data', label: 'Data & Storage', icon: Database }
+        ].map((tab) => {
+          const isActive = profileTab === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setProfileTab(tab.id)}
+              className={`flex items-center gap-1.5 pb-2.5 px-2.5 text-xs font-bold transition-all relative cursor-pointer
+                ${isActive ? 'text-brand-primary' : 'text-txt-secondary hover:text-txt-primary'}`}
             >
-              <motion.div
-                layout
-                className="w-4.5 h-4.5 bg-white rounded-full shadow-brand-sm"
-                animate={{ x: darkMode ? 22 : 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              />
-            </div>
-          }
-        />
-
-        <SettingItem 
-          icon={Bell} 
-          label="Notifications" 
-          sublabel={notificationsEnabled ? "Smart Alerts Enabled" : "Alerts Muted"} 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={toggleNotifications}
-          rightElement={
-            <div
-              onClick={(e) => { e.stopPropagation(); toggleNotifications(); }}
-              className={`w-12 h-6.5 rounded-full p-1 transition-colors duration-200 relative shrink-0 focus:outline-none cursor-pointer flex items-center
-                ${notificationsEnabled ? 'bg-brand-success' : 'bg-brand-border'}`}
-            >
-              <motion.div
-                layout
-                className="w-4.5 h-4.5 bg-white rounded-full shadow-brand-sm"
-                animate={{ x: notificationsEnabled ? 22 : 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              />
-            </div>
-          }
-        />
-
-        <SettingItem 
-          icon={Shield} 
-          label="Privacy & Security" 
-          sublabel={aiCategorizationEnabled ? "AI Enabled • Local & Cloud RLS" : "AI Disabled • 100% Local Rules"} 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={() => setShowPrivacyModal(true)}
-        />
-
-        <SettingItem 
-          icon={Smartphone} 
-          label="SMS Permissions" 
-          sublabel={`Status: ${smsStatus}`} 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={handleToggleSMSPermission}
-        />
+              <Icon size={14} />
+              <span>{tab.label}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="activeProfileSubTab"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary rounded-full"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Support Settings */}
-      <div className="mb-8">
-        <h3 className="text-[10px] text-txt-secondary font-bold uppercase tracking-wider mb-3 px-1">Support</h3>
-        <SettingItem 
-          icon={Heart} 
-          label="Share Finovo" 
-          sublabel="Invite Friends to Finovo" 
-          color="bg-brand-primary/10 text-brand-primary" 
-          onClick={handleShare}
-        />
-      </div>
-
-      {/* Account Actions */}
-      <div className="space-y-3 mb-12">
-        <button
-          onClick={onLogout}
-          aria-label="Logout current session"
-          className="w-full bg-brand-error/10 border border-brand-error/20 p-4 rounded-xl flex items-center justify-center gap-2 text-brand-error font-semibold text-sm hover:bg-brand-error/20 transition-all cursor-pointer shadow-brand-sm focus-visible:ring-2 focus-visible:ring-brand-error outline-none"
-        >
-          <LogOut size={16} />
-          Logout Session
-        </button>
-
-        {onClearAccountData && (
-          <button
-            onClick={() => setShowClearDataConfirm(true)}
-            aria-label="Clear all account transaction data"
-            className="w-full bg-bg-card border border-brand-border p-3.5 rounded-xl flex items-center justify-center gap-2 text-txt-secondary hover:text-brand-error text-xs font-semibold transition-all cursor-pointer"
+      <AnimatePresence mode="wait">
+        {/* TAB 1: FINANCIAL CONTROLS */}
+        {profileTab === 'financial' && (
+          <motion.div
+            key="financial"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3"
           >
-            <RotateCcw size={14} />
-            Reset Account Ledger Data
-          </button>
+            <SettingCard 
+              icon={Wallet} 
+              label="Spending Budgets" 
+              sublabel={budgetSublabel} 
+              badge={`${budgets.length} Targets`}
+              color="bg-brand-primary/10 text-brand-primary" 
+              onClick={() => setShowBudgetModal(true)}
+            />
+
+            <SettingCard 
+              icon={Target} 
+              label="Savings Goals" 
+              sublabel={`${savingsGoals.length} Active Targets • Deposit & Track Progress`} 
+              badge={`${savingsGoals.length} Goals`}
+              color="bg-brand-success/10 text-brand-success" 
+              onClick={() => setShowSavingsModal(true)}
+            />
+
+            <SettingCard 
+              icon={Tag} 
+              label="Merchant Categorisation Rules" 
+              sublabel={`${userRules.length} Custom Merchant Overrides Configured`} 
+              badge={`${userRules.length} Rules`}
+              color="bg-purple-500/10 text-purple-500" 
+              onClick={() => setShowRulesModal(true)}
+            />
+          </motion.div>
         )}
-      </div>
+
+        {/* TAB 2: PREFERENCES & SECURITY */}
+        {profileTab === 'preferences' && (
+          <motion.div
+            key="preferences"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3"
+          >
+            {/* Dark Mode */}
+            <SettingCard 
+              icon={Moon} 
+              label="Dark Theme" 
+              sublabel={darkMode ? "High Contrast Dark Palette Enabled" : "Clean Light Mode Active"} 
+              color="bg-brand-primary/10 text-brand-primary" 
+              onClick={toggleDarkMode}
+              rightElement={
+                <div
+                  onClick={(e) => { e.stopPropagation(); toggleDarkMode(); }}
+                  className={`w-12 h-6.5 rounded-full p-1 transition-colors duration-200 relative shrink-0 cursor-pointer flex items-center
+                    ${darkMode ? 'bg-brand-primary' : 'bg-brand-border'}`}
+                >
+                  <motion.div
+                    layout
+                    className="w-4.5 h-4.5 bg-white rounded-full shadow-brand-sm"
+                    animate={{ x: darkMode ? 22 : 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  />
+                </div>
+              }
+            />
+
+            {/* Notifications */}
+            <SettingCard 
+              icon={Bell} 
+              label="Push & SMS Notifications" 
+              sublabel={notificationsEnabled ? "Smart Alerts Enabled" : "Alerts Muted"} 
+              color="bg-brand-success/10 text-brand-success" 
+              onClick={toggleNotifications}
+              rightElement={
+                <div
+                  onClick={(e) => { e.stopPropagation(); toggleNotifications(); }}
+                  className={`w-12 h-6.5 rounded-full p-1 transition-colors duration-200 relative shrink-0 cursor-pointer flex items-center
+                    ${notificationsEnabled ? 'bg-brand-success' : 'bg-brand-border'}`}
+                >
+                  <motion.div
+                    layout
+                    className="w-4.5 h-4.5 bg-white rounded-full shadow-brand-sm"
+                    animate={{ x: notificationsEnabled ? 22 : 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  />
+                </div>
+              }
+            />
+
+            {/* Privacy & Security */}
+            <SettingCard 
+              icon={Shield} 
+              label="Privacy & Security Engine" 
+              sublabel={aiCategorizationEnabled ? "AI Enabled • Local & Cloud RLS" : "AI Disabled • 100% Local Rules"} 
+              color="bg-purple-500/10 text-purple-500" 
+              onClick={() => setShowPrivacyModal(true)}
+            />
+
+            {/* SMS Permission */}
+            <SettingCard 
+              icon={Smartphone} 
+              label="SMS Tracking Integration" 
+              sublabel={`Status: ${smsStatus}`} 
+              color="bg-blue-500/10 text-blue-500" 
+              onClick={handleToggleSMSPermission}
+            />
+
+            {/* Share Finovo */}
+            <SettingCard 
+              icon={Heart} 
+              label="Share Finovo" 
+              sublabel="Invite Friends & Colleagues" 
+              color="bg-rose-500/10 text-rose-500" 
+              onClick={handleShare}
+            />
+
+            {/* Logout Session */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onLogout}
+                aria-label="Logout current session"
+                className="w-full bg-brand-error/10 border border-brand-error/20 p-3.5 rounded-xl flex items-center justify-center gap-2 text-brand-error font-semibold text-xs sm:text-sm hover:bg-brand-error/20 transition-all cursor-pointer shadow-brand-sm"
+              >
+                <LogOut size={16} />
+                Logout Current Session
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB 3: DATA & BACKUP */}
+        {profileTab === 'data' && (
+          <motion.div
+            key="data"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3"
+          >
+            {/* CSV Import */}
+            <SettingCard 
+              icon={UploadCloud} 
+              label="Import Statement (CSV)" 
+              sublabel="Upload Bank CSV with Column Mapping" 
+              color="bg-blue-500/10 text-blue-500" 
+              onClick={() => setShowCsvImportModal(true)}
+            />
+
+            {/* CSV Export */}
+            <SettingCard 
+              icon={FileSpreadsheet} 
+              label="Export Ledger (CSV)" 
+              sublabel="Filtered Spreadsheet Download (Injection Safe)" 
+              color="bg-emerald-500/10 text-emerald-500" 
+              onClick={() => setShowCsvExportModal(true)}
+            />
+
+            {/* JSON Full Backup */}
+            <SettingCard 
+              icon={Download} 
+              label="Full System Backup (JSON)" 
+              sublabel="Download Complete Profile & Financial Records" 
+              color="bg-purple-500/10 text-purple-500" 
+              onClick={handleExportData}
+            />
+
+            {/* Reset Data */}
+            {onClearAccountData && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClearDataConfirm(true)}
+                  aria-label="Clear all account transaction data"
+                  className="w-full bg-bg-card border border-brand-border p-3.5 rounded-xl flex items-center justify-center gap-2 text-txt-secondary hover:text-brand-error text-xs font-semibold transition-all cursor-pointer shadow-brand-sm"
+                >
+                  <RotateCcw size={14} />
+                  Reset Account Ledger Data
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Version Tag */}
-      <div className="text-center text-[10px] text-txt-secondary font-medium pb-8">
+      <div className="text-center text-[10px] text-txt-secondary font-medium pt-8 pb-4">
         Finovo Personal Finance • Version 5.3.0
       </div>
 
@@ -466,6 +550,7 @@ const Profile = ({
                   </div>
                 </div>
                 <button 
+                  type="button"
                   onClick={() => setShowPrivacyModal(false)} 
                   aria-label="Close dialog"
                   className="w-8 h-8 rounded-full bg-bg-app border border-brand-border flex items-center justify-center text-txt-secondary hover:text-txt-primary cursor-pointer"
@@ -531,6 +616,7 @@ const Profile = ({
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowPrivacyModal(false)}
                 className="w-full py-3 bg-brand-primary text-white text-xs font-bold rounded-xl shadow-brand-sm hover:opacity-95 cursor-pointer"
               >
@@ -563,12 +649,14 @@ const Profile = ({
               </p>
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
+                  type="button"
                   onClick={() => setShowClearDataConfirm(false)}
                   className="px-3.5 py-2 border border-brand-border text-txt-secondary text-xs font-semibold rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setShowClearDataConfirm(false);
                     onClearAccountData();
