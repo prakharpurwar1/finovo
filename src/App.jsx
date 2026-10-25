@@ -935,6 +935,7 @@ function App() {
           <Splits 
             groups={groups}
             transactions={transactions}
+            userProfile={userProfile}
             onAddGroup={handleAddGroup}
             onAdd={() => setShowAddExpense(true)} 
           />
